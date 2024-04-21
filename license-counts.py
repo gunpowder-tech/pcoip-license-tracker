@@ -29,19 +29,21 @@ import requests
 import time
 from prometheus_client import Gauge, start_http_server
 
-SITE_ID = 'thinkbox.compliance.flexnetoperations.com'
+SITE_ID = 'teradici.compliance.flexnetoperations.com'
 SERVER_ID = os.environ['FNO_SERVER']
 SERVER_BASE_URL = 'https://{0}/api/1.0/instances/{1}'.format(SITE_ID, SERVER_ID)
 SERVER_LOGIN_URL = SERVER_BASE_URL + '/authorize'
 SERVER_FEATURE_SUMMARY_URL = SERVER_BASE_URL + '/features/summaries'
+SERVER_CLIENT_SUMMARY_URL = SERVER_BASE_URL + '/clients'
 
 login_dict = {
     'user': 'admin',
     'password': os.environ['FNO_PASSWORD']
 }
 
-g = Gauge('thinkbox_ubl', 'ubl details as reported by thinkbox',['feature','entitlement'])
-PORT = int(os.getenv("LISTEN_PORT",9666))
+g = Gauge('pcoip', 'pcoip license usage as reported by teradici',['feature','entitlement'])
+client_gauge = Gauge('pcoip_client', 'Presence of PCoIP active session', ['hostname'])
+PORT = int(os.getenv("LISTEN_PORT",9777))
 print("starting server on port {}".format(PORT))
 start_http_server(PORT)
 
@@ -61,21 +63,28 @@ while True:
 
     try:
         data = session.get(url=SERVER_FEATURE_SUMMARY_URL, headers=auth_header).json()
+        clientData = session.get(url=SERVER_CLIENT_SUMMARY_URL, headers=auth_header).json()
+        client_gauge.clear()
+        g.clear()
     except Exception as e:
         print("Error while collecting capabilities: {}".format(e))
 
-    for feature_name, value in data.items():
-        # We only have one version of any license
-        value = value['0.00']
+    clients = []
+    total_count_sum = 0
+    total_used_sum = 0
+    for key, value in data.items():
+        print(key)
+        if key == "Agent-Graphics":
+                for date, data in value.items():
+                    total_count_sum += data['totalCount']
+                    total_used_sum += data['totalUsed']
+    for entry in clientData:
+        for key, value in entry.items():
+            if key == "hostName":
+                clients.append(value)
+                client_gauge.labels(hostname=value).set(1)
+            
+    g.labels("pcoip_licenses","used").set(total_used_sum)
+    g.labels("pcoip_licenses","entitled").set(total_count_sum)
 
-        print("Feature:       {:} ".format(feature_name))
-        print("    Entitled:  {:,}".format(int(value['totalCount'])))
-        g.labels(feature_name,"entitled").set(int(value['totalCount']))
-        print("    Used:      {:,}".format(int(value['totalUsed'])))
-        g.labels(feature_name,"used").set(int(value['totalUsed']))
-        print("    Overage:   {:,}".format(int(value['totalOverdraftCount'])))
-        g.labels(feature_name,"overage").set(int(value['totalOverdraftCount']))
-        print("    Available: {:,}".format(int(value['totalAvailable'])))
-        g.labels(feature_name,"available").set(int(value['totalAvailable']))
-        print()
     time.sleep(30)
