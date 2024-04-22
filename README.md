@@ -1,4 +1,4 @@
-# deadline ubl tracker
+# pcoip license tracker tracker
 
 the script here has been adapted from a conversation on the AWS Thinkbox forums: https://forums.thinkboxsoftware.com/t/a-script-to-list-available-licenses-from-ubl-servers/30039/4. 
 
